@@ -25,6 +25,8 @@ LOG_DIR = APP_DIR / "logs"
 CHROME_WORKER_DIR = APP_DIR / "chrome-workers"
 APPLY_WORKER_DIR = APP_DIR / "apply-workers"
 AGENT_RUN_DIR = APP_DIR / "agent-runs"
+# Scratch working dirs for CLI-driven LLM calls (Codex provider)
+LLM_RUN_DIR = APP_DIR / "llm-runs"
 
 # Package-shipped config (YAML registries)
 PACKAGE_DIR = Path(__file__).parent
@@ -88,7 +90,8 @@ def get_chrome_user_data() -> Path:
 
 def ensure_dirs():
     """Create all required directories."""
-    for d in [APP_DIR, TAILORED_DIR, COVER_LETTER_DIR, LOG_DIR, CHROME_WORKER_DIR, APPLY_WORKER_DIR, AGENT_RUN_DIR]:
+    for d in [APP_DIR, TAILORED_DIR, COVER_LETTER_DIR, LOG_DIR, CHROME_WORKER_DIR,
+              APPLY_WORKER_DIR, AGENT_RUN_DIR, LLM_RUN_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -199,17 +202,28 @@ TIER_COMMANDS: dict[int, list[str]] = {
 }
 
 
+def has_llm_provider() -> bool:
+    """True when the AI stages have something to run against.
+
+    Either an HTTP provider (API key or local endpoint) or the Codex CLI,
+    which ApplyPilot can drive locally instead of an API.
+    """
+    if any(os.environ.get(k) for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_URL")):
+        return True
+    from applypilot import llm_codex
+    return llm_codex.is_available()
+
+
 def get_tier() -> int:
     """Detect the current tier based on available dependencies.
 
     Tier 1 (Discovery):            Python + pip
-    Tier 2 (AI Scoring & Tailoring): + LLM API key
+    Tier 2 (AI Scoring & Tailoring): + LLM API key, or the Codex CLI
     Tier 3 (Full Auto-Apply):       + supported agent CLI + Chrome
     """
     load_env()
 
-    has_llm = any(os.environ.get(k) for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_URL"))
-    if not has_llm:
+    if not has_llm_provider():
         return 1
 
     from applypilot.apply.agents import available_backends
@@ -241,8 +255,11 @@ def check_tier(required: int, feature: str) -> None:
     _console = Console(stderr=True)
 
     missing: list[str] = []
-    if required >= 2 and not any(os.environ.get(k) for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_URL")):
-        missing.append("LLM API key — run [bold]applypilot init[/bold] or set GEMINI_API_KEY")
+    if required >= 2 and not has_llm_provider():
+        missing.append(
+            "LLM provider — run [bold]applypilot init[/bold], set GEMINI_API_KEY, or install "
+            "the Codex CLI to run the AI stages locally"
+        )
     if required >= 3:
         from applypilot.apply.agents import available_backends
         if not available_backends():

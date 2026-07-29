@@ -627,8 +627,9 @@ Stop immediately. Output your RESULT code. Do not loop."""
         prompt += """
 
 == TOOL RESTRICTIONS ==
-Gmail is READ-ONLY. You may use search_emails and read_email to retrieve verification codes.
-Never draft, send, modify, delete, or label email, and never download attachments.
+Gmail: only search_emails, read_email, and send_email are available to you.
+search_emails/read_email are for retrieving login verification codes. send_email is ONLY for
+the email-only application path in step 4 -- never for anything else.
 Never modify files outside the working directory. Never run destructive shell commands."""
 
     return prompt

@@ -90,11 +90,11 @@ Each stage is independent. Run them all or pick what you need.
 |-----------|-------------|---------|
 | Python 3.11+ | Everything | Core runtime |
 | Node.js 18+ | Auto-apply | Needed for `npx` to run Playwright MCP server |
-| Gemini API key | Scoring, tailoring, cover letters | Free tier (15 RPM / 1M tokens/day) is enough |
+| Gemini API key **or** Codex CLI | Scoring, tailoring, cover letters | Free Gemini tier (15 RPM / 1M tokens/day) is enough, or run these stages through your local Codex CLI with no API key |
 | Chrome/Chromium | Auto-apply | Auto-detected on most systems |
 | Claude Code CLI **or** Codex CLI | Auto-apply | Install [Claude Code](https://claude.ai/code) or [Codex CLI](https://developers.openai.com/codex/cli) |
 
-**Gemini API key is free.** Get one at [aistudio.google.com](https://aistudio.google.com). OpenAI and local models (Ollama/llama.cpp) are also supported.
+**Gemini API key is free.** Get one at [aistudio.google.com](https://aistudio.google.com). OpenAI and local models (Ollama/llama.cpp) are also supported — as is the locally installed Codex CLI, see [Running everything through Codex](#running-everything-through-codex).
 
 ### Optional
 
@@ -154,15 +154,50 @@ Use `applypilot apply --agent claude` or `applypilot apply --agent codex`, or se
 when both CLIs are available. An explicit `--model` is passed to the selected backend;
 otherwise Claude uses `haiku` and Codex uses the default in `~/.codex/config.toml`.
 
-Codex does not report dollar cost in its JSONL stream, so dollar-cost tracking is Claude-only.
-Codex 0.144.6 also has no documented per-server MCP tool allowlist; Gmail write blocking is
-therefore enforced by an explicit prompt restriction, while Claude blocks write tools through
-its CLI. Codex runs with approvals and sandboxing bypassed because auto-apply must drive a real
-Chrome browser over CDP and read resume and cover-letter PDFs from `~/.applypilot`. This is
-the same trust level as Claude Code's `bypassPermissions`; only run auto-apply on jobs and
-profiles you trust.
+Both backends restrict Gmail to `search_emails`, `read_email`, and `send_email` — Claude Code
+through `--disallowedTools`, Codex through a per-server `enabled_tools` allowlist. Every
+destructive Gmail tool (delete, modify, labels, filters, attachment download) is unreachable
+either way.
+
+Codex does not report dollar cost in its JSONL stream, so the dashboard's cost column stays at
+`$0.000` for Codex runs. Codex runs with approvals and sandboxing bypassed because auto-apply
+must drive a real Chrome browser over CDP and read resume and cover-letter PDFs from
+`~/.applypilot`. This is the same trust level as Claude Code's `bypassPermissions`; only run
+auto-apply on jobs and profiles you trust.
 
 The Playwright MCP server is configured automatically at runtime per worker. No manual MCP setup needed.
+
+### Running everything through Codex
+
+If you have the Codex CLI installed and signed in, ApplyPilot can run **both** the AI stages
+(score, tailor, cover) and auto-apply through it — no Gemini or OpenAI key required.
+
+```bash
+codex login                  # once, if you aren't already signed in
+applypilot doctor            # should report "LLM provider: local Codex CLI" and "Codex CLI OK"
+applypilot init              # pick 'codex' at the provider prompt
+applypilot run               # stages 1-5 via codex exec
+applypilot apply --agent codex
+```
+
+The AI stages call `codex exec` once per request in a throwaway working directory, read-only
+sandbox, no MCP servers, `--ephemeral` so your `~/.codex` sessions aren't flooded. Configure it
+with:
+
+| Variable | Effect |
+|----------|--------|
+| `LLM_PROVIDER=codex` | Force the Codex provider even when API keys are set |
+| `CODEX_MODEL` | Model for the AI stages (default: your `~/.codex/config.toml` model) |
+| `CODEX_LLM_TIMEOUT` | Per-request timeout in seconds (default: 300) |
+| `APPLYPILOT_AGENT=codex` | Default the auto-apply browser agent to Codex |
+
+Without any of these, Codex is picked up automatically for the AI stages only when no
+`GEMINI_API_KEY`, `OPENAI_API_KEY`, or `LLM_URL` is configured.
+
+Trade-offs versus an API provider: each request pays CLI startup and agent overhead, so the
+scoring stage is slower per job; `temperature` and `max_tokens` are ignored because the Codex
+CLI exposes no equivalent; and usage counts against your Codex plan rather than a metered API
+key.
 
 ```bash
 # Utility modes (no Chrome/agent CLI needed)

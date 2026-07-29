@@ -245,16 +245,31 @@ def _setup_ai_features() -> None:
         console.print("[dim]Discovery-only mode. You can configure AI later with [bold]applypilot init[/bold].[/dim]")
         return
 
-    console.print("Supported providers: [bold]Gemini[/bold] (recommended, free tier), OpenAI, local (Ollama/llama.cpp)")
-    provider = Prompt.ask(
-        "Provider",
-        choices=["gemini", "openai", "local"],
-        default="gemini",
-    )
+    codex_installed = shutil.which("codex") is not None
+    providers = ["gemini", "openai", "local"]
+    provider_line = ("Supported providers: [bold]Gemini[/bold] (recommended, free tier), "
+                     "OpenAI, local (Ollama/llama.cpp)")
+    if codex_installed:
+        providers.append("codex")
+        provider_line += (
+            "\n[bold]codex[/bold] — use your locally installed Codex CLI. No API key needed; "
+            "uses your existing Codex sign-in."
+        )
+    console.print(provider_line)
+    provider = Prompt.ask("Provider", choices=providers, default="gemini")
 
     env_lines = ["# ApplyPilot configuration", ""]
 
-    if provider == "gemini":
+    if provider == "codex":
+        model = Prompt.ask("Codex model (blank = your Codex default)", default="")
+        env_lines.append("LLM_PROVIDER=codex")
+        if model:
+            env_lines.append(f"CODEX_MODEL={model}")
+        console.print(
+            "[dim]Make sure you're signed in: run [bold]codex login[/bold] if "
+            "[bold]applypilot doctor[/bold] reports otherwise.[/dim]"
+        )
+    elif provider == "gemini":
         api_key = Prompt.ask("Gemini API key (from aistudio.google.com)")
         model = Prompt.ask("Model", default="gemini-2.0-flash")
         env_lines.append(f"GEMINI_API_KEY={api_key}")

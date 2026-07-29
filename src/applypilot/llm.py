@@ -6,7 +6,12 @@ Auto-detects provider from environment:
   OPENAI_API_KEY  -> OpenAI (default: gpt-4o-mini)
   LLM_URL         -> Local llama.cpp / Ollama compatible endpoint
 
-LLM_MODEL env var overrides the model name for any provider.
+If none of those are set but the Codex CLI is installed, falls back to driving
+`codex exec` locally (see llm_codex.py) so no API key is required. Set
+LLM_PROVIDER=codex to force that path even when API keys are present.
+
+LLM_MODEL env var overrides the model name for any HTTP provider; the Codex
+path uses CODEX_MODEL instead.
 """
 
 import logging
@@ -54,9 +59,24 @@ def _detect_provider() -> tuple[str, str, str]:
         )
 
     raise RuntimeError(
-        "No LLM provider configured. "
-        "Set GEMINI_API_KEY, OPENAI_API_KEY, or LLM_URL in your environment."
+        "No LLM provider configured. Set GEMINI_API_KEY, OPENAI_API_KEY, or "
+        "LLM_URL in your environment, or install the Codex CLI to run the AI "
+        "stages through it locally (LLM_PROVIDER=codex)."
     )
+
+
+def use_codex_provider() -> bool:
+    """True when the AI stages should run through the local Codex CLI.
+
+    Forced by LLM_PROVIDER=codex; otherwise used as the fallback when no HTTP
+    provider is configured and the Codex CLI is installed.
+    """
+    from applypilot import llm_codex
+
+    if os.environ.get("LLM_PROVIDER", "").strip().lower() == "codex":
+        return True
+    configured = any(os.environ.get(k) for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_URL"))
+    return not configured and llm_codex.is_available()
 
 
 # ---------------------------------------------------------------------------
@@ -284,14 +304,25 @@ class _GeminiCompatForbidden(Exception):
 # Singleton
 # ---------------------------------------------------------------------------
 
-_instance: LLMClient | None = None
+_instance: "LLMClient | CodexCLIClient | None" = None
 
 
-def get_client() -> LLMClient:
-    """Return (or create) the module-level LLMClient singleton."""
+def get_client() -> "LLMClient | CodexCLIClient":
+    """Return (or create) the module-level LLM client singleton."""
     global _instance
     if _instance is None:
-        base_url, model, api_key = _detect_provider()
-        log.info("LLM provider: %s  model: %s", base_url, model)
-        _instance = LLMClient(base_url, model, api_key)
+        if use_codex_provider():
+            from applypilot.llm_codex import CodexCLIClient, _DEFAULT_TIMEOUT
+
+            model = os.environ.get("CODEX_MODEL", "")
+            try:
+                timeout = int(os.environ.get("CODEX_LLM_TIMEOUT", _DEFAULT_TIMEOUT))
+            except ValueError:
+                timeout = _DEFAULT_TIMEOUT
+            log.info("LLM provider: local Codex CLI  model: %s", model or "codex default")
+            _instance = CodexCLIClient(model=model or None, timeout=timeout)
+        else:
+            base_url, model, api_key = _detect_provider()
+            log.info("LLM provider: %s  model: %s", base_url, model)
+            _instance = LLMClient(base_url, model, api_key)
     return _instance

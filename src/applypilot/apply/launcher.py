@@ -78,13 +78,12 @@ def mcp_servers_spec(cdp_port: int) -> dict:
         "gmail": {
             "command": "npx",
             "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+            # Read + send only. Backends that support per-server allowlists
+            # enforce this directly; Claude Code enforces the equivalent
+            # through --disallowedTools.
+            "enabled_tools": ["search_emails", "read_email", "send_email"],
         },
     }
-
-
-def _make_mcp_config(cdp_port: int) -> dict:
-    """Build the Claude on-disk MCP config for a specific CDP port."""
-    return {"mcpServers": mcp_servers_spec(cdp_port)}
 
 
 # ---------------------------------------------------------------------------
@@ -239,16 +238,11 @@ def gen_prompt(target_url: str, min_score: int = 7,
     worker_dir.mkdir(parents=True, exist_ok=True)
     run_dir = config.AGENT_RUN_DIR / f"worker-{worker_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    command = backend.build_command(
+    command = backend.debug_command(
         prompt_path_or_stdin="-", model=selected_model,
         mcp=mcp_servers_spec(BASE_CDP_PORT + worker_id),
-        worker_dir=worker_dir, run_dir=run_dir,
+        worker_dir=worker_dir, run_dir=run_dir, worker_id=worker_id,
     )
-    if backend.name == "codex":
-        # Keep the manual command focused while deriving it from the runtime argv.
-        command.remove("--ephemeral")
-        output_index = command.index("-o")
-        del command[output_index:output_index + 2]
     return prompt_file, command
 
 
@@ -319,7 +313,7 @@ def run_job(job: dict, port: int, worker_id: int = 0,
     run_dir.mkdir(parents=True, exist_ok=True)
     cmd = backend.build_command(
         prompt_path_or_stdin="-", model=selected_model, mcp=mcp_servers_spec(port),
-        worker_dir=worker_dir, run_dir=run_dir,
+        worker_dir=worker_dir, run_dir=run_dir, worker_id=worker_id,
     )
     env = backend.prepare_env(os.environ.copy())
 
@@ -357,6 +351,8 @@ def run_job(job: dict, port: int, worker_id: int = 0,
                     continue
                 event = backend.parse_stream(line)
                 if event is None:
+                    # Not JSON at all (CLI warning, stack trace). Keep it --
+                    # it's the only record of what went wrong.
                     text_parts.append(line)
                     lf.write(line + "\n")
                     continue
@@ -365,10 +361,10 @@ def run_job(job: dict, port: int, worker_id: int = 0,
                 if event.kind == "text" and event.text:
                     text_parts.append(event.text)
                     lf.write(event.text + "\n")
-                tool_descriptions = event.tools
+                tool_descriptions = list(event.tools)
                 if event.kind == "tool":
-                    tool_descriptions.extend(event.text.splitlines() or [event.text])
-                for description in tool_descriptions:
+                    tool_descriptions.extend(event.text.splitlines())
+                for description in (d for d in tool_descriptions if d.strip()):
                     lf.write(f"  >> {description}\n")
                     ws = get_state(worker_id)
                     update_state(worker_id, actions=(ws.actions if ws else 0) + 1,
@@ -582,11 +578,12 @@ def main(limit: int = 1, target_url: str | None = None,
         target_url: Apply to a specific URL.
         min_score: Minimum fit_score threshold.
         headless: Run Chrome in headless mode.
-        model: Claude model name.
+        model: Model name for the selected backend (None = backend default).
         dry_run: Don't click Submit.
         continuous: Run forever, polling for new jobs.
         poll_interval: Seconds between DB polls when queue is empty.
         workers: Number of parallel workers (default 1).
+        agent: Backend name ('claude', 'codex', or None/'auto' to resolve).
     """
     global POLL_INTERVAL
     POLL_INTERVAL = poll_interval

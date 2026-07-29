@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pluggable auto-apply agent backends with locally installed Codex CLI support, selectable via
   `applypilot apply --agent` or `APPLYPILOT_AGENT`. Claude Code remains the automatic default
   when both backends are installed.
+- Codex CLI as an LLM provider for the scoring, tailoring and cover-letter stages, so the full
+  pipeline can run with no API key. Selected with `LLM_PROVIDER=codex`, or automatically when
+  no other provider is configured. Tunable via `CODEX_MODEL` and `CODEX_LLM_TIMEOUT`.
+- `applypilot doctor` now reports the resolved LLM provider (including Codex sign-in status)
+  and each installed agent CLI.
+
+### Fixed
+- Agent stream events that parsed as JSON but had no handler (Claude's `system`, hook,
+  `rate_limit_event` and tool-result turns) were being dumped verbatim into the job logs and
+  into the text scanned for `RESULT:` codes. Backends now distinguish "ignored" from
+  "unparseable".
+- Codex runs restrict Gmail through a per-server `enabled_tools` allowlist rather than a
+  prompt-level request, matching the guarantees Claude Code gets from `--disallowedTools`.
 
 ## [0.2.0] - 2026-02-17
 

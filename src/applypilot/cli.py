@@ -394,32 +394,38 @@ def doctor() -> None:
 
     # --- Tier 2 checks ---
     import os
+    from applypilot import llm, llm_codex
+
     has_gemini = bool(os.environ.get("GEMINI_API_KEY"))
     has_openai = bool(os.environ.get("OPENAI_API_KEY"))
     has_local = bool(os.environ.get("LLM_URL"))
-    if has_gemini:
+    if llm.use_codex_provider():
+        model = os.environ.get("CODEX_MODEL") or "codex default"
+        signed_in, detail = llm_codex.check_auth()
+        results.append(("LLM provider", ok_mark if signed_in else warn_mark,
+                        f"local Codex CLI ({model}) — {detail}"))
+    elif has_gemini:
         model = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
-        results.append(("LLM API key", ok_mark, f"Gemini ({model})"))
+        results.append(("LLM provider", ok_mark, f"Gemini ({model})"))
     elif has_openai:
         model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-        results.append(("LLM API key", ok_mark, f"OpenAI ({model})"))
+        results.append(("LLM provider", ok_mark, f"OpenAI ({model})"))
     elif has_local:
-        results.append(("LLM API key", ok_mark, f"Local: {os.environ.get('LLM_URL')}"))
+        results.append(("LLM provider", ok_mark, f"Local: {os.environ.get('LLM_URL')}"))
     else:
-        results.append(("LLM API key", fail_mark,
-                        "Set GEMINI_API_KEY in ~/.applypilot/.env (run 'applypilot init')"))
+        results.append(("LLM provider", fail_mark,
+                        "Set GEMINI_API_KEY in ~/.applypilot/.env, or install the Codex CLI"))
 
     # --- Tier 3 checks ---
     # Supported browser-agent CLIs
     from applypilot.apply.agents import BACKENDS, resolve_backend
     for backend_type in BACKENDS.values():
         backend_path = shutil.which(backend_type.cli)
+        row = f"{backend_type.label} CLI"
         if backend_path:
-            results.append((f"{backend_type.label} CLI" if backend_type.name == "claude" else backend_type.label,
-                            ok_mark, backend_path))
+            results.append((row, ok_mark, backend_path))
         else:
-            results.append((f"{backend_type.label} CLI" if backend_type.name == "claude" else backend_type.label,
-                            fail_mark, f"Install from {backend_type.install_hint}"))
+            results.append((row, fail_mark, f"Install from {backend_type.install_hint}"))
     try:
         selected_backend = resolve_backend()
         results.append(("Agent backend", ok_mark, selected_backend.label))
@@ -467,7 +473,7 @@ def doctor() -> None:
     console.print(f"[bold]Current tier: Tier {tier} — {TIER_LABELS[tier]}[/bold]")
 
     if tier == 1:
-        console.print("[dim]  → Tier 2 unlocks: scoring, tailoring, cover letters (needs LLM API key)[/dim]")
+        console.print("[dim]  → Tier 2 unlocks: scoring, tailoring, cover letters (needs an LLM API key or the Codex CLI)[/dim]")
         console.print("[dim]  → Tier 3 unlocks: auto-apply (needs Claude Code CLI or Codex CLI + Chrome + Node.js)[/dim]")
     elif tier == 2:
         console.print("[dim]  → Tier 3 unlocks: auto-apply (needs Claude Code CLI or Codex CLI + Chrome + Node.js)[/dim]")
