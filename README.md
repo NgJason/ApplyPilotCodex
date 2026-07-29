@@ -45,7 +45,7 @@ applypilot apply --dry-run  # fill forms without submitting
 ## Two Paths
 
 ### Full Pipeline (recommended)
-**Requires:** Python 3.11+, Node.js (for npx), Gemini API key (free), Claude Code CLI, Chrome
+**Requires:** Python 3.11+, Node.js (for npx), Gemini API key (free), Claude Code CLI or Codex CLI, Chrome
 
 Runs all 6 stages, from job discovery to autonomous application submission. This is the full power of ApplyPilot.
 
@@ -65,7 +65,7 @@ Runs stages 1-5: discovers jobs, scores them, tailors your resume, generates cov
 | **3. Score** | AI rates every job 1-10 based on your resume and preferences. Only high-fit jobs proceed |
 | **4. Tailor** | AI rewrites your resume per job: reorganizes, emphasizes relevant experience, adds keywords. Never fabricates |
 | **5. Cover Letter** | AI generates a targeted cover letter per job |
-| **6. Auto-Apply** | Claude Code navigates application forms, fills fields, uploads documents, answers questions, and submits |
+| **6. Auto-Apply** | The selected browser agent navigates application forms, fills fields, uploads documents, answers questions, and submits |
 
 Each stage is independent. Run them all or pick what you need.
 
@@ -92,7 +92,7 @@ Each stage is independent. Run them all or pick what you need.
 | Node.js 18+ | Auto-apply | Needed for `npx` to run Playwright MCP server |
 | Gemini API key | Scoring, tailoring, cover letters | Free tier (15 RPM / 1M tokens/day) is enough |
 | Chrome/Chromium | Auto-apply | Auto-detected on most systems |
-| Claude Code CLI | Auto-apply | Install from [claude.ai/code](https://claude.ai/code) |
+| Claude Code CLI **or** Codex CLI | Auto-apply | Install [Claude Code](https://claude.ai/code) or [Codex CLI](https://developers.openai.com/codex/cli) |
 
 **Gemini API key is free.** Get one at [aistudio.google.com](https://aistudio.google.com). OpenAI and local models (Ollama/llama.cpp) are also supported.
 
@@ -144,12 +144,28 @@ Generates a custom resume per job: reorders experience, emphasizes relevant skil
 Writes a targeted cover letter per job referencing the specific company, role, and how your experience maps to their requirements.
 
 ### Auto-Apply
-Claude Code launches a Chrome instance, navigates to each application page, detects the form type, fills personal information and work history, uploads the tailored resume and cover letter, answers screening questions with AI, and submits. A live dashboard shows progress in real-time.
+The selected browser agent launches a Chrome instance, navigates to each application page, detects the form type, fills personal information and work history, uploads the tailored resume and cover letter, answers screening questions with AI, and submits. A live dashboard shows progress in real-time.
+
+#### Choosing the browser agent
+
+Use `applypilot apply --agent claude` or `applypilot apply --agent codex`, or set
+`APPLYPILOT_AGENT` in your environment. The default `auto` mode honors
+`APPLYPILOT_AGENT` first, then selects the first installed backend, preferring Claude Code
+when both CLIs are available. An explicit `--model` is passed to the selected backend;
+otherwise Claude uses `haiku` and Codex uses the default in `~/.codex/config.toml`.
+
+Codex does not report dollar cost in its JSONL stream, so dollar-cost tracking is Claude-only.
+Codex 0.144.6 also has no documented per-server MCP tool allowlist; Gmail write blocking is
+therefore enforced by an explicit prompt restriction, while Claude blocks write tools through
+its CLI. Codex runs with approvals and sandboxing bypassed because auto-apply must drive a real
+Chrome browser over CDP and read resume and cover-letter PDFs from `~/.applypilot`. This is
+the same trust level as Claude Code's `bypassPermissions`; only run auto-apply on jobs and
+profiles you trust.
 
 The Playwright MCP server is configured automatically at runtime per worker. No manual MCP setup needed.
 
 ```bash
-# Utility modes (no Chrome/Claude needed)
+# Utility modes (no Chrome/agent CLI needed)
 applypilot apply --mark-applied URL    # manually mark a job as applied
 applypilot apply --mark-failed URL     # manually mark a job as failed
 applypilot apply --reset-failed        # reset all failed jobs for retry

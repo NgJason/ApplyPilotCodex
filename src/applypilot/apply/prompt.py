@@ -419,7 +419,7 @@ If CapSolver genuinely failed (errorId > 0):
 
 def build_prompt(job: dict, tailored_resume: str,
                  cover_letter: str | None = None,
-                 dry_run: bool = False) -> str:
+                 dry_run: bool = False, agent: str = "claude") -> str:
     """Build the full instruction prompt for the apply agent.
 
     Loads the user profile and search config internally. All personal data
@@ -431,6 +431,7 @@ def build_prompt(job: dict, tailored_resume: str,
         tailored_resume: Plain-text content of the tailored resume.
         cover_letter: Optional plain-text cover letter content.
         dry_run: If True, tell the agent not to click Submit.
+        agent: Selected backend name; used only for additive safety notes.
 
     Returns:
         Complete prompt string for the AI agent.
@@ -620,5 +621,14 @@ RESULT:FAILED:reason -- any other failure (brief reason)
 - Job is closed/expired/page says "no longer accepting" -> RESULT:EXPIRED
 - Page is broken/500 error/blank -> RESULT:FAILED:page_error
 Stop immediately. Output your RESULT code. Do not loop."""
+
+
+    if agent == "codex":
+        prompt += """
+
+== TOOL RESTRICTIONS ==
+Gmail is READ-ONLY. You may use search_emails and read_email to retrieve verification codes.
+Never draft, send, modify, delete, or label email, and never download attachments.
+Never modify files outside the working directory. Never run destructive shell commands."""
 
     return prompt

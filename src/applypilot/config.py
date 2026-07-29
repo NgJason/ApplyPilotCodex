@@ -24,6 +24,7 @@ LOG_DIR = APP_DIR / "logs"
 # Chrome worker isolation
 CHROME_WORKER_DIR = APP_DIR / "chrome-workers"
 APPLY_WORKER_DIR = APP_DIR / "apply-workers"
+AGENT_RUN_DIR = APP_DIR / "agent-runs"
 
 # Package-shipped config (YAML registries)
 PACKAGE_DIR = Path(__file__).parent
@@ -87,7 +88,7 @@ def get_chrome_user_data() -> Path:
 
 def ensure_dirs():
     """Create all required directories."""
-    for d in [APP_DIR, TAILORED_DIR, COVER_LETTER_DIR, LOG_DIR, CHROME_WORKER_DIR, APPLY_WORKER_DIR]:
+    for d in [APP_DIR, TAILORED_DIR, COVER_LETTER_DIR, LOG_DIR, CHROME_WORKER_DIR, APPLY_WORKER_DIR, AGENT_RUN_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -168,6 +169,7 @@ DEFAULTS = {
     "poll_interval": 60,
     "apply_timeout": 300,
     "viewport": "1280x900",
+    "agent": "auto",
 }
 
 
@@ -202,7 +204,7 @@ def get_tier() -> int:
 
     Tier 1 (Discovery):            Python + pip
     Tier 2 (AI Scoring & Tailoring): + LLM API key
-    Tier 3 (Full Auto-Apply):       + Claude Code CLI + Chrome
+    Tier 3 (Full Auto-Apply):       + supported agent CLI + Chrome
     """
     load_env()
 
@@ -210,14 +212,15 @@ def get_tier() -> int:
     if not has_llm:
         return 1
 
-    has_claude = shutil.which("claude") is not None
+    from applypilot.apply.agents import available_backends
+    has_agent = bool(available_backends())
     try:
         get_chrome_path()
         has_chrome = True
     except FileNotFoundError:
         has_chrome = False
 
-    if has_claude and has_chrome:
+    if has_agent and has_chrome:
         return 3
 
     return 2
@@ -241,8 +244,12 @@ def check_tier(required: int, feature: str) -> None:
     if required >= 2 and not any(os.environ.get(k) for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "LLM_URL")):
         missing.append("LLM API key — run [bold]applypilot init[/bold] or set GEMINI_API_KEY")
     if required >= 3:
-        if not shutil.which("claude"):
-            missing.append("Claude Code CLI — install from [bold]https://claude.ai/code[/bold]")
+        from applypilot.apply.agents import available_backends
+        if not available_backends():
+            missing.append(
+                "Agent CLI — install Claude Code ([bold]https://claude.ai/code[/bold]) or "
+                "Codex CLI ([bold]https://developers.openai.com/codex/cli[/bold])"
+            )
         try:
             get_chrome_path()
         except FileNotFoundError:
